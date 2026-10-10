@@ -2,6 +2,7 @@ import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
+import { waitForFirstVideoFrame } from "@/lib/waitForFirstVideoFrame";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -2122,11 +2123,33 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				);
 			}
 
+			// The Linux portal resolves getDisplayMedia() while its picker is still
+			// open, so hold the recorder and its clock until frames actually flow.
+			const firstFrame = useLinuxPortal
+				? await waitForFirstVideoFrame(videoTrack).catch((error) => {
+						if (startWasCancelled()) {
+							return null;
+						}
+						throw error;
+					})
+				: null;
+			// The picker can stay open for a long time; a stop requested meanwhile
+			// must not turn into a recording once frames arrive.
+			if (startWasCancelled()) {
+				cleanupCapturedMedia();
+				await stopWebcamRecorder();
+				return;
+			}
+
 			let {
 				width = DEFAULT_WIDTH,
 				height = DEFAULT_HEIGHT,
 				frameRate = TARGET_FRAME_RATE,
 			} = videoTrack.getSettings();
+			if (firstFrame) {
+				// Before the first frame the track reports the requested size.
+				({ width, height } = firstFrame);
+			}
 
 			width = Math.floor(width / CODEC_ALIGNMENT) * CODEC_ALIGNMENT;
 			height = Math.floor(height / CODEC_ALIGNMENT) * CODEC_ALIGNMENT;
@@ -2135,7 +2158,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const mimeType = selectMimeType();
 
 			console.log(
-				`Recording at ${width}x${height} @ ${frameRate ?? TARGET_FRAME_RATE}fps using ${mimeType ?? "browser default"} / ${Math.round(
+				`Recording at ${width}x${height} @ ${firstFrame ? "up to " : ""}${frameRate ?? TARGET_FRAME_RATE}fps using ${mimeType ?? "browser default"} / ${Math.round(
 					videoBitsPerSecond / BITS_PER_MEGABIT,
 				)} Mbps`,
 			);
@@ -2164,6 +2187,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				cleanupCapturedMedia();
 				if (chunks.current.length === 0) {
 					setFinalizing(false);
+					console.warn("Recording stopped without any captured data.");
+					await notifyRecordingFinalizationFailure(
+						"Nothing was recorded because no screen frames were captured.",
+					);
 					return;
 				}
 
