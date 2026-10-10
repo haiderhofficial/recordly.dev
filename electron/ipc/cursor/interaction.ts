@@ -9,6 +9,7 @@ import {
 	setHasLoggedInteractionHookFailure,
 	setInteractionCaptureCleanup,
 	setLastLeftClick,
+	setCompositorCursorSourceFailed,
 	setLinuxCursorScreenPoint,
 } from "../state";
 import type {
@@ -17,6 +18,8 @@ import type {
 	UiohookLike,
 	UiohookModuleNamespace,
 } from "../types";
+import { diffKwinButtons, startKwinClickEffect } from "./kwinClickEffect";
+import { isKdeWaylandSession, startKwinCursorBridge } from "./kwinCursorBridge";
 import {
 	getCursorCaptureElapsedMs,
 	getHookCursorScreenPoint,
@@ -53,6 +56,96 @@ export function stopInteractionCapture() {
 	if (interactionCaptureCleanup) {
 		interactionCaptureCleanup();
 		setInteractionCaptureCleanup(null);
+	}
+}
+
+let stopCompositorCursorSource: (() => void) | null = null;
+let stopCompositorClickSource: (() => void) | null = null;
+let compositorCursorSourceGeneration = 0;
+let compositorClickSourceActive = false;
+
+export function stopCompositorCursorCapture() {
+	compositorCursorSourceGeneration += 1;
+	stopCompositorCursorSource?.();
+	stopCompositorCursorSource = null;
+	stopCompositorClickSource?.();
+	stopCompositorClickSource = null;
+	compositorClickSourceActive = false;
+	setCompositorCursorSourceFailed(false);
+}
+
+export async function startCompositorCursorCapture() {
+	stopCompositorCursorCapture();
+	if (!isKdeWaylandSession(process.platform)) {
+		return;
+	}
+
+	const generation = compositorCursorSourceGeneration;
+	try {
+		const stop = await startKwinCursorBridge(
+			(point) => {
+				if (generation === compositorCursorSourceGeneration) {
+					setLinuxCursorScreenPoint({ ...point, updatedAt: Date.now(), logical: true });
+				}
+			},
+			() => {
+				if (generation !== compositorCursorSourceGeneration) {
+					return;
+				}
+				console.warn("[CursorTelemetry] KWin cursor position source exited.");
+				// Drop the stale position and let fresh X11 hook positions through.
+				stopCompositorCursorSource = null;
+				setLinuxCursorScreenPoint(null);
+				setCompositorCursorSourceFailed(true);
+			},
+		);
+		if (generation !== compositorCursorSourceGeneration) {
+			stop();
+			return;
+		}
+		stopCompositorCursorSource = stop;
+	} catch (error) {
+		console.warn("[CursorTelemetry] KWin cursor position source unavailable:", error);
+		if (generation === compositorCursorSourceGeneration) {
+			// Let fresh X11 hook positions through instead of recording nothing.
+			setCompositorCursorSourceFailed(true);
+		}
+		return;
+	}
+
+	try {
+		const stopClicks = await startKwinClickEffect(
+			(buttons, oldButtons) => {
+				if (generation !== compositorCursorSourceGeneration) {
+					return;
+				}
+				const { pressed, released } = diffKwinButtons(buttons, oldButtons);
+				for (const button of pressed) {
+					recordCursorMouseDown(button);
+				}
+				for (let index = 0; index < released; index += 1) {
+					recordCursorMouseUp();
+				}
+			},
+			process.env,
+			() => {
+				if (generation !== compositorCursorSourceGeneration) {
+					return;
+				}
+				console.warn("[CursorTelemetry] KWin click source exited.");
+				// Hand clicks back to the X11 hook.
+				stopCompositorClickSource = null;
+				compositorClickSourceActive = false;
+			},
+		);
+		if (generation !== compositorCursorSourceGeneration) {
+			stopClicks();
+			return;
+		}
+		compositorClickSourceActive = true;
+		stopCompositorClickSource = stopClicks;
+	} catch (error) {
+		console.warn("[CursorTelemetry] KWin click source unavailable:", error);
 	}
 }
 
@@ -268,12 +361,17 @@ export async function startInteractionCapture() {
 			return;
 		}
 
+		// With the compositor click source active the X11 hook would double-count clicks.
 		const onMouseDown = (event: HookMouseEvent) => {
-			recordCursorMouseDown(getHookMouseButton(event));
+			if (!compositorClickSourceActive) {
+				recordCursorMouseDown(getHookMouseButton(event));
+			}
 		};
 
 		const onMouseUp = () => {
-			recordCursorMouseUp();
+			if (!compositorClickSourceActive) {
+				recordCursorMouseUp();
+			}
 		};
 
 		const onMouseMove = (event: HookMouseEvent) => {
@@ -282,7 +380,8 @@ export async function startInteractionCapture() {
 			}
 
 			const point = getHookCursorScreenPoint(event);
-			if (!point) {
+			// The X11 hook only sees XWayland windows; the compositor source wins.
+			if (!point || stopCompositorCursorSource) {
 				return;
 			}
 
