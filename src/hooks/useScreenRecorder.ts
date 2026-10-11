@@ -395,6 +395,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const webcamStream = useRef<MediaStream | null>(null);
 	const mixingContext = useRef<AudioContext | null>(null);
 	const chunks = useRef<Blob[]>([]);
+	const browserRecordingDiscarded = useRef(false);
 	const webcamChunks = useRef<Blob[]>([]);
 	const startTime = useRef<number>(0);
 	const webcamStartTime = useRef<number | null>(null);
@@ -2180,11 +2181,21 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			);
 
 			mediaRecorder.current = recorder;
+			browserRecordingDiscarded.current = false;
 			recorder.ondataavailable = (event) => {
 				if (event.data && event.data.size > 0) chunks.current.push(event.data);
 			};
 			recorder.onstop = async () => {
 				cleanupCapturedMedia();
+				const wasDiscarded = browserRecordingDiscarded.current;
+				browserRecordingDiscarded.current = false;
+				if (wasDiscarded) {
+					// stop() still flushes a last fragment after the chunks were
+					// cleared; on its own it is not a playable file.
+					chunks.current = [];
+					setFinalizing(false);
+					return;
+				}
 				if (chunks.current.length === 0) {
 					setFinalizing(false);
 					console.warn("Recording stopped without any captured data.");
@@ -2433,6 +2444,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		if (mediaRecorder.current) {
 			chunks.current = [];
+			browserRecordingDiscarded.current = true;
 			cleanupCapturedMedia();
 			if (mediaRecorder.current.state !== "inactive") {
 				mediaRecorder.current.stop();
