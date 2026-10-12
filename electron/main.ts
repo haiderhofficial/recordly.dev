@@ -12,6 +12,7 @@ import {
 	ipcMain,
 	Menu,
 	nativeImage,
+	screen,
 	session,
 	shell,
 	systemPreferences,
@@ -20,7 +21,7 @@ import {
 import { RECORDINGS_DIR } from "./appPaths";
 import { createAuthCallbackController } from "./authCallback";
 import { showCursor } from "./cursorHider";
-import { getGpuSwitches } from "./gpuSwitches";
+import { getGpuSwitches, isLinuxX11Session } from "./gpuSwitches";
 import {
 	cleanupAllExportStreams,
 	cleanupNativeVideoExportSessions,
@@ -1130,14 +1131,23 @@ app.whenReady().then(async () => {
 			// would itself trigger an extra portal dialog.
 			const isLinuxPortalSentinel =
 				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
-			if (isLinuxPortalSentinel) {
+			// On X11 there is no portal: Chromium only accepts real X11 source ids,
+			// so the synthetic id fails with "Could not start video source". Fall
+			// through and resolve the primary display instead (getSources shows no
+			// dialog on X11).
+			if (isLinuxPortalSentinel && !isLinuxX11Session(process.env)) {
 				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
 				return;
 			}
 			const sources = await desktopCapturer.getSources({ types: ["screen", "window"] });
+			const primaryDisplayId = String(screen.getPrimaryDisplay().id);
+			const defaultSource =
+				(isLinuxPortalSentinel
+					? sources.find((s) => s.display_id === primaryDisplayId)
+					: undefined) ?? sources[0];
 			const source = sourceId
-				? (sources.find((s) => s.id === sourceId) ?? sources[0])
-				: sources[0];
+				? (sources.find((s) => s.id === sourceId) ?? defaultSource)
+				: defaultSource;
 			if (source) {
 				callback({
 					video: { id: source.id, name: source.name },

@@ -20,7 +20,7 @@ function getForcedLinuxWindowSystem(env: NodeJS.ProcessEnv): "wayland" | "x11" |
 	);
 }
 
-export function shouldForceLinuxEgl(env: NodeJS.ProcessEnv): boolean {
+export function isLinuxX11Session(env: NodeJS.ProcessEnv): boolean {
 	const forcedWindowSystem = getForcedLinuxWindowSystem(env);
 	if (forcedWindowSystem === "wayland") {
 		return false;
@@ -42,7 +42,7 @@ export function shouldForceLinuxEgl(env: NodeJS.ProcessEnv): boolean {
 
 export function getGpuSwitches(
 	platform: NodeJS.Platform,
-	env: NodeJS.ProcessEnv = process.env,
+	_env: NodeJS.ProcessEnv = process.env,
 ): GpuSwitches {
 	if (platform === "darwin") {
 		return {
@@ -56,8 +56,9 @@ export function getGpuSwitches(
 	}
 
 	if (platform === "linux") {
+		// Do not force --use-gl=egl on X11: Electron 43 only allows ANGLE, so the
+		// GPU process exits and WebGL/WebGPU become unavailable to the editor.
 		return {
-			useGl: shouldForceLinuxEgl(env) ? "egl" : undefined,
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		};
 	}
