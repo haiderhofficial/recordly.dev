@@ -277,6 +277,25 @@ export type DiscardNativeCaptureResult = {
 	error?: unknown;
 };
 
+/**
+ * The captured source can end without the HUD being asked to stop: the
+ * portal's own "stop sharing" control, a closed window or an unplugged
+ * display. track.stop() does not fire "ended", so our own stops never land here.
+ */
+export function stopWhenCaptureSourceEnds(
+	track: Pick<MediaStreamTrack, "addEventListener">,
+	isRecorderLive: () => boolean,
+	stop: () => void,
+) {
+	track.addEventListener(
+		"ended",
+		() => {
+			if (isRecorderLive()) stop();
+		},
+		{ once: true },
+	);
+}
+
 export async function stopAndDiscardNativeCapture({
 	stopNativeScreenRecording,
 	deleteRecordingFile,
@@ -396,6 +415,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const mixingContext = useRef<AudioContext | null>(null);
 	const chunks = useRef<Blob[]>([]);
 	const browserRecordingDiscarded = useRef(false);
+	const browserStopRequested = useRef(false);
 	const webcamChunks = useRef<Blob[]>([]);
 	const startTime = useRef<number>(0);
 	const webcamStartTime = useRef<number | null>(null);
@@ -1476,6 +1496,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			} catch (error) {
 				console.warn("Failed to flush recorder before stopping:", error);
 			}
+			browserStopRequested.current = true;
 			recorder.stop();
 			setRecording(false);
 			setFinalizing(true);
@@ -1653,6 +1674,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const recorder = mediaRecorder.current;
 			const recorderState = recorder?.state;
 			if (recorder && (recorderState === "recording" || recorderState === "paused")) {
+				browserStopRequested.current = true;
 				recorder.stop();
 			}
 
@@ -2182,10 +2204,22 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			mediaRecorder.current = recorder;
 			browserRecordingDiscarded.current = false;
+			browserStopRequested.current = false;
 			recorder.ondataavailable = (event) => {
 				if (event.data && event.data.size > 0) chunks.current.push(event.data);
 			};
 			recorder.onstop = async () => {
+				if (!browserStopRequested.current) {
+					// Once every recorded track has ended the recorder stops by itself,
+					// possibly before the "ended" handler below gets to ask for it.
+					browserStopRequested.current = true;
+					pendingWebcamPathPromise.current = stopWebcamRecorder();
+					setPaused(false);
+					markRecordingResumed(Date.now());
+					setRecording(false);
+					setFinalizing(true);
+					void window.electronAPI?.setRecordingState(false);
+				}
 				cleanupCapturedMedia();
 				const wasDiscarded = browserRecordingDiscarded.current;
 				browserRecordingDiscarded.current = false;
@@ -2279,6 +2313,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			recorder.onerror = () => {
 				setRecording(false);
 			};
+			// Finish the recording and open the editor, as the HUD stop button does.
+			stopWhenCaptureSourceEnds(
+				videoTrack,
+				() => mediaRecorder.current === recorder && recorder.state !== "inactive",
+				() => stopRecording.current(),
+			);
 			const mainStartedAt = Date.now();
 			beginWebcamCapture();
 			resetRecordingClock(mainStartedAt);
@@ -2445,6 +2485,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (mediaRecorder.current) {
 			chunks.current = [];
 			browserRecordingDiscarded.current = true;
+			browserStopRequested.current = true;
 			cleanupCapturedMedia();
 			if (mediaRecorder.current.state !== "inactive") {
 				mediaRecorder.current.stop();
