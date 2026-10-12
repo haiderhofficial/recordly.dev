@@ -1,38 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
 import { RecordlySignInDialog } from "./RecordlySignInDialog";
 
-const SEEN_KEY = "recordly.onboarding.v1.seen";
-
+// Opens only on request (Settings → Show onboarding); no first-run popup.
 export function OnboardingController({
 	requestNonce,
-	ready,
 	user,
 	configured,
 	callbackError,
 }: {
 	requestNonce: number;
-	ready: boolean;
 	user: User | null;
 	configured: boolean;
 	callbackError?: string;
 }) {
 	const [open, setOpen] = useState(false);
-	const checked = useRef(false);
 	useEffect(() => {
 		if (requestNonce > 0) setOpen(true);
 	}, [requestNonce]);
-	const close = useCallback(() => {
-		saveAppSetting(SEEN_KEY, true);
-		setOpen(false);
-	}, []);
-
-	useEffect(() => {
-		if (!ready || checked.current) return;
-		checked.current = true;
-		if (!loadAppSetting<boolean>(SEEN_KEY)) setOpen(true);
-	}, [ready]);
+	const close = useCallback(() => setOpen(false), []);
 
 	return (
 		<RecordlySignInDialog

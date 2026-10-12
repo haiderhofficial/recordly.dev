@@ -7,6 +7,7 @@ import {
 	MicrophoneSlashIcon,
 	MinusIcon,
 	MonitorIcon,
+	TextT,
 	TimerIcon,
 	VideoCameraIcon,
 	VideoCameraSlashIcon,
@@ -42,6 +43,7 @@ import { MicPopover } from "./popovers/MicPopover";
 import { SourcePopover } from "./popovers/SourcePopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
+import { TeleprompterPanel, useTeleprompterSettings } from "./TeleprompterPanel";
 
 export function LaunchWindow() {
 	return (
@@ -146,6 +148,22 @@ function LaunchWindowContent() {
 	useEffect(() => {
 		return () => {
 			window.electronAPI?.hudOverlaySetWebcamPreviewVisible?.(false);
+		};
+	}, []);
+
+	const [teleprompter, updateTeleprompter] = useTeleprompterSettings();
+	// The script panel lives in the full-screen HUD, which only exists with mouse passthrough
+	// (macOS/Windows) — the same platforms where the HUD can be hidden from capture.
+	const canUseTeleprompter = hudOverlayMousePassthroughSupported === true;
+	const showTeleprompter = canUseTeleprompter && teleprompter.enabled && !finalizing;
+
+	useEffect(() => {
+		window.electronAPI?.hudOverlaySetTeleprompterActive?.(showTeleprompter);
+	}, [showTeleprompter]);
+
+	useEffect(() => {
+		return () => {
+			window.electronAPI?.hudOverlaySetTeleprompterActive?.(false);
 		};
 	}, []);
 
@@ -343,6 +361,24 @@ function LaunchWindowContent() {
 					</Button>
 				}
 			/>
+
+			{canUseTeleprompter && (
+				<Button
+					variant="ghost"
+					size="icon"
+					iconSize="lg"
+					aria-pressed={teleprompter.enabled}
+					title={
+						teleprompter.enabled
+							? t("teleprompter.disable", "Hide teleprompter")
+							: t("teleprompter.enable", "Show teleprompter")
+					}
+					className={teleprompter.enabled ? "text-accent" : ""}
+					onClick={() => updateTeleprompter({ enabled: !teleprompter.enabled })}
+				>
+					<TextT weight={teleprompter.enabled ? "fill" : "regular"} className="size-5" />
+				</Button>
+			)}
 
 			<CountdownPopover
 				countdownDelay={countdownDelay}
@@ -546,6 +582,16 @@ function LaunchWindowContent() {
 					</div>
 				</div>
 			</div>
+			{showTeleprompter && (
+				<TeleprompterPanel
+					settings={teleprompter}
+					onChange={updateTeleprompter}
+					recording={recording}
+					paused={paused}
+					microphoneEnabled={microphoneEnabled}
+					microphoneDeviceId={microphoneDeviceId}
+				/>
+			)}
 		</HudInteractionContext.Provider>
 	);
 }

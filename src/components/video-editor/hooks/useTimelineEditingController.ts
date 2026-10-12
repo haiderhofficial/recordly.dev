@@ -18,6 +18,7 @@ import { useCursorTelemetry } from "./useCursorTelemetry";
 import { useEditorGlobalInteractions } from "./useEditorGlobalInteractions";
 import { useEditorPlaybackControls } from "./useEditorPlaybackControls";
 import { useFreshRecordingAutoZoom } from "./useFreshRecordingAutoZoom";
+import { useSpeechTidyCommands } from "./useSpeechTidyCommands";
 import { useTimelineProjection } from "./useTimelineProjection";
 import { useZoomRegionCommands } from "./useZoomRegionCommands";
 
@@ -192,6 +193,20 @@ export function useTimelineEditingController(input: Input) {
 		nextClipIdRef: input.nextClipIdRef,
 		t: input.t,
 	});
+	const speechTidyCommands = useSpeechTidyCommands({
+		t: input.t,
+		videoPath: input.videoPath,
+		videoSourcePath: input.videoSourcePath,
+		currentSourcePath: input.currentSourcePath,
+		clipRegions: timeline.clipRegions,
+		setClipRegions: timeline.setClipRegions,
+		setZoomRegions: timeline.setZoomRegions,
+		setAnnotationRegions: timeline.setAnnotationRegions,
+		setAudioRegions: timeline.setAudioRegions,
+		autoCaptions: timeline.autoCaptions,
+		setSelectedClipId: timeline.setSelectedClipId,
+		nextClipIdRef: input.nextClipIdRef,
+	});
 	const audioCommands = useAudioRegionCommands({
 		setSelectedClipId: timeline.setSelectedClipId,
 		setAudioRegions: timeline.setAudioRegions,
@@ -231,6 +246,7 @@ export function useTimelineEditingController(input: Input) {
 		captionCommands,
 		zoomCommands,
 		clipCommands,
+		speechTidyCommands,
 		audioCommands,
 		annotationCommands,
 		handleSelectAnnotation,

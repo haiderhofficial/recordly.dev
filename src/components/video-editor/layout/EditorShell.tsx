@@ -152,7 +152,6 @@ export function EditorShell(props: Props) {
 	const onboarding = (
 		<OnboardingController
 			requestNonce={onboardingRequest}
-			ready={!project.loading && !auth.loading}
 			user={auth.user}
 			configured={auth.configured}
 			callbackError={auth.callbackError}

@@ -1,13 +1,11 @@
-import { SettingsSections, SettingsCategory } from "./SettingsSections";
-import { Card, RadioGroup, Radio, Label, Description } from "@heroui/react";
-import { ProgressBar } from "@heroui/react";
-import { ColorControl, ColorPalette } from "@/components/ui/color-picker";
-import { Palette, Trash as Trash2, UploadSimple as Upload } from "@/components/ui/icons";
+import { Card, Description, Label, ProgressBar, Radio, RadioGroup } from "@heroui/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "@/components/ui/toast";
 import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import { Button } from "@/components/ui/button";
+import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
+import { ColorControl, ColorPalette } from "@/components/ui/color-picker";
+import { Palette, Trash as Trash2, UploadSimple as Upload } from "@/components/ui/icons";
 import {
 	Select,
 	SelectContent,
@@ -16,7 +14,8 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
+import { toast } from "@/components/ui/toast";
+import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getAssetPath, getRenderableVideoUrl, getWallpaperThumbnailUrl } from "@/lib/assetPath";
 import { cn } from "@/lib/utils";
@@ -39,11 +38,11 @@ import {
 	getMatchingCursorMotionPresetId,
 } from "./cursorMotionPresets";
 import { loadEditorPreferences, saveEditorPreferences } from "./editorPreferences";
+import type { TidyPreview } from "./hooks/useSpeechTidyCommands";
 import { getDefaultBorderRadiusPercent } from "./projectPersistence";
-import { SliderControl } from "./SliderControl";
-import { WallpaperGrid } from "./WallpaperGrid";
-import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { SettingsRow } from "./SettingsRow";
+import { SettingsCategory, SettingsSections } from "./SettingsSections";
+import { SliderControl } from "./SliderControl";
 import type {
 	AnnotationRegion,
 	AnnotationType,
@@ -93,6 +92,7 @@ import {
 	cursorSetAssets,
 	getCursorStyleSizeMultiplier,
 } from "./videoPlayback/uploadedCursorAssets";
+import { WallpaperGrid } from "./WallpaperGrid";
 import { WebcamCropControl } from "./WebcamCropControl";
 import {
 	getCropMatchedWebcamHeightPercent,
@@ -545,6 +545,12 @@ interface SettingsPanelProps {
 	onPickWhisperModel?: () => void;
 	onGenerateAutoCaptions?: () => void;
 	onClearAutoCaptions?: () => void;
+	isDetectingDeadAir?: boolean;
+	tidyPreview?: TidyPreview | null;
+	onRemoveDeadAir?: () => void;
+	onRemoveFillerWords?: () => void;
+	onApplyTidyPreview?: () => void;
+	onCancelTidyPreview?: () => void;
 	onDownloadWhisperSmallModel?: () => void;
 	onDeleteWhisperSmallModel?: () => void;
 	captionCurrentTimeMs?: number;
@@ -988,6 +994,12 @@ export function SettingsPanel({
 	onPickWhisperModel,
 	onGenerateAutoCaptions,
 	onClearAutoCaptions,
+	isDetectingDeadAir = false,
+	tidyPreview = null,
+	onRemoveDeadAir,
+	onRemoveFillerWords,
+	onApplyTidyPreview,
+	onCancelTidyPreview,
 	onDownloadWhisperSmallModel,
 	onDeleteWhisperSmallModel,
 	captionCurrentTimeMs = 0,
@@ -2114,6 +2126,70 @@ export function SettingsPanel({
 								? tSettings("captions.regenerateFull", "Regenerate Captions")
 								: tSettings("captions.generateFull", "Generate Captions")}
 					</Button>
+					<div className="flex flex-col gap-2">
+						<Button
+							type="button"
+							variant="outline"
+							onClick={onRemoveDeadAir}
+							disabled={isDetectingDeadAir}
+							className="h-9 w-full px-4 text-sm"
+						>
+							{isDetectingDeadAir
+								? tSettings("captions.tidyAnalyzing", "Analyzing audio...")
+								: tSettings("captions.removeDeadAir", "Remove Dead Air")}
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={onRemoveFillerWords}
+							disabled={captionCueCount === 0}
+							className="h-9 w-full px-4 text-sm"
+						>
+							{tSettings("captions.removeFillers", "Remove Filler Words")}
+						</Button>
+						{tidyPreview ? (
+							<div className="space-y-2 rounded-md border border-border p-3 text-sm">
+								<div className="text-muted-foreground">
+									{tidyPreview.kind === "dead-air"
+										? tSettings(
+												"captions.tidyPreviewDeadAir",
+												"Shorten long pauses. Saves {{seconds}} s.",
+												{
+													seconds: (tidyPreview.removedMs / 1000).toFixed(
+														1,
+													),
+												},
+											)
+										: tSettings(
+												"captions.tidyPreviewFillers",
+												"Remove filler words. Saves {{seconds}} s.",
+												{
+													seconds: (tidyPreview.removedMs / 1000).toFixed(
+														1,
+													),
+												},
+											)}
+								</div>
+								<div className="flex gap-2">
+									<Button
+										type="button"
+										onClick={onApplyTidyPreview}
+										className="h-9 flex-1 px-4 text-sm"
+									>
+										{tSettings("captions.tidyApply", "Apply")}
+									</Button>
+									<Button
+										type="button"
+										variant="outline"
+										onClick={onCancelTidyPreview}
+										className="h-9 flex-1 px-4 text-sm"
+									>
+										{tSettings("captions.tidyCancel", "Cancel")}
+									</Button>
+								</div>
+							</div>
+						) : null}
+					</div>
 					{isGeneratingCaptions ? (
 						<div className="space-y-1">
 							<div className="text-xs text-muted-foreground">

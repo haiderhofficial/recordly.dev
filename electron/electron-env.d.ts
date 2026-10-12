@@ -227,6 +227,8 @@ interface Window {
 		onEditorModeChanged: (callback: (inEditor: boolean) => void) => () => void;
 		hudOverlayRendererReady: () => void;
 		hudOverlaySetWebcamPreviewVisible: (visible: boolean) => void;
+		hudOverlaySetTeleprompterActive: (active: boolean) => void;
+		hudOverlaySetKeyboardFocus: (focus: boolean) => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
@@ -717,6 +719,11 @@ interface Window {
 				error?: string;
 			}) => void,
 		) => () => void;
+		detectRecordingSilence: (options: { videoPath: string }) => Promise<{
+			success: boolean;
+			intervals?: Array<{ startMs: number; endMs: number }>;
+			error?: string;
+		}>;
 		generateAutoCaptions: (options: {
 			videoPath: string;
 			whisperExecutablePath?: string;

@@ -6,6 +6,7 @@ import type { useAnnotationRegionCommands } from "../hooks/useAnnotationRegionCo
 import type { useAudioRegionCommands } from "../hooks/useAudioRegionCommands";
 import type { useCaptionCommands } from "../hooks/useCaptionCommands";
 import type { useClipRegionCommands } from "../hooks/useClipRegionCommands";
+import type { useSpeechTidyCommands } from "../hooks/useSpeechTidyCommands";
 import type { useZoomRegionCommands } from "../hooks/useZoomRegionCommands";
 import { SettingsPanel } from "../SettingsPanel";
 import type { useAppearanceState } from "../state/useAppearanceState";
@@ -20,6 +21,7 @@ type Input = {
 	clipCommands: ReturnType<typeof useClipRegionCommands>;
 	audioCommands: ReturnType<typeof useAudioRegionCommands>;
 	captionCommands: ReturnType<typeof useCaptionCommands>;
+	speechTidyCommands: ReturnType<typeof useSpeechTidyCommands>;
 	annotationCommands: ReturnType<typeof useAnnotationRegionCommands>;
 	autoCaptionController: ReturnType<typeof useAutoCaptionController>;
 	effectiveShowCursor: boolean;
@@ -48,6 +50,7 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		clipCommands,
 		audioCommands,
 		captionCommands,
+		speechTidyCommands,
 		annotationCommands,
 		autoCaptionController,
 		effectiveShowCursor,
@@ -199,6 +202,12 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onPickWhisperModel: autoCaptionController.handlePickWhisperModel,
 		onGenerateAutoCaptions: autoCaptionController.handleGenerateAutoCaptions,
 		onClearAutoCaptions: captionCommands.handleClearAutoCaptions,
+		isDetectingDeadAir: speechTidyCommands.isDetectingDeadAir,
+		tidyPreview: speechTidyCommands.tidyPreview,
+		onRemoveDeadAir: speechTidyCommands.handleRemoveDeadAir,
+		onRemoveFillerWords: speechTidyCommands.handleRemoveFillerWords,
+		onApplyTidyPreview: speechTidyCommands.handleApplyTidyPreview,
+		onCancelTidyPreview: speechTidyCommands.handleCancelTidyPreview,
 		captionCurrentTimeMs: mapTimelineTimeToSourceTime(currentTime * 1000, timeline.clipRegions),
 		selectedCaptionId: timeline.selectedCaptionId,
 		onBeginCaptionEdit: captionCommands.handleBeginCaptionEdit,

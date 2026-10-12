@@ -272,7 +272,7 @@ export function sortClipRegions(clips: ClipRegion[]): ClipRegion[] {
 	return [...clips].sort((left, right) => left.startMs - right.startMs);
 }
 
-function getSafeClipSpeed(clip: ClipRegion) {
+export function getSafeClipSpeed(clip: ClipRegion) {
 	return Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
 }
 

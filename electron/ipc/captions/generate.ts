@@ -13,10 +13,10 @@ import {
 } from "../recording/diagnostics";
 import { normalizeVideoSourcePath } from "../utils";
 import { type CaptionAudioCandidate, getCaptionCompanionAudioCandidates } from "./audioCandidates";
-import { shouldRetryWhisperWithoutJson } from "./parser";
-import { readWhisperCaptionOutput } from "./output";
-import { isMissingWindowsWhisperRuntimeDependency } from "./runtimeErrors";
 import { mergeCaptionSources } from "./mergeSources";
+import { readWhisperCaptionOutput } from "./output";
+import { shouldRetryWhisperWithoutJson } from "./parser";
+import { isMissingWindowsWhisperRuntimeDependency } from "./runtimeErrors";
 import { segmentCuesIntoPhrases } from "./segment";
 import {
 	parseSilenceIntervals,
@@ -227,6 +227,27 @@ export async function detectSilenceIntervals(options: {
 	);
 
 	return parseSilenceIntervals(stderr ?? "");
+}
+
+/** Silence intervals for a recording's audio, without running transcription. */
+export async function detectRecordingSilenceIntervals(
+	videoPath: string,
+): Promise<SilenceInterval[]> {
+	const normalizedVideoPath = normalizeVideoSourcePath(videoPath);
+	if (!normalizedVideoPath) {
+		throw new Error("Missing source video path.");
+	}
+	const ffmpegPath = getFfmpegBinaryPath();
+	const wavPath = path.join(
+		app.getPath("temp"),
+		`recordly-silence-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.wav`,
+	);
+	try {
+		await extractCaptionAudioSource({ videoPath: normalizedVideoPath, ffmpegPath, wavPath });
+		return await detectSilenceIntervals({ ffmpegPath, wavPath });
+	} finally {
+		await fs.rm(wavPath, { force: true }).catch(() => undefined);
+	}
 }
 
 async function generateCaptionsForSource(options: {

@@ -310,6 +310,7 @@ export default function VideoEditor() {
 		captionCommands,
 		zoomCommands,
 		clipCommands,
+		speechTidyCommands,
 		audioCommands,
 		annotationCommands,
 	} = editing;
@@ -361,6 +362,7 @@ export default function VideoEditor() {
 		clipCommands,
 		audioCommands,
 		captionCommands,
+		speechTidyCommands,
 		annotationCommands,
 		autoCaptionController,
 		effectiveShowCursor,
