@@ -21,6 +21,7 @@ import { RECORDINGS_DIR } from "./appPaths";
 import { createAuthCallbackController } from "./authCallback";
 import { showCursor } from "./cursorHider";
 import { getGpuSwitches } from "./gpuSwitches";
+import { shouldRecreateHudToFocus } from "./hudFocusRecreation";
 import {
 	cleanupAllExportStreams,
 	cleanupNativeVideoExportSessions,
@@ -55,7 +56,9 @@ import {
 	getHudOverlayWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
+	isHudOverlayCaptureInProgress,
 	isHudOverlayMousePassthroughSupported,
+	isHudOverlayRecordingActive,
 	beginHudCaptureProtection,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
 	setHudOverlayRecordingActive,
@@ -382,9 +385,12 @@ function focusOrCreateMainWindow() {
 		// Electron's tray doesn't handle that yet. Workaround: destroy and recreate the HUD so the new
 		// window gets focus (creation path works). Only for HUD, not editor.
 		if (
-			process.platform === "linux" &&
-			!mainWindow.isFocused() &&
-			!isEditorWindow(mainWindow)
+			shouldRecreateHudToFocus({
+				platform: process.platform,
+				isHud: mainWindow === getHudOverlayWindow(),
+				focused: mainWindow.isFocused(),
+				captureInProgress: isHudOverlayCaptureInProgress(),
+			})
 		) {
 			const win = mainWindow;
 			mainWindow = null;
@@ -546,10 +552,26 @@ function isPrimaryTrayClick(event: unknown) {
 	return button === undefined || button === 0 || button === "left";
 }
 
+function stopRecordingFromTray() {
+	const hud = getHudOverlayWindow();
+	if (!hud || !isHudOverlayRecordingActive()) {
+		return false;
+	}
+
+	hud.webContents.send("stop-recording-from-tray");
+	return true;
+}
+
 function createTray() {
 	tray = new Tray(getDefaultTrayIcon());
 	tray.on("click", (event) => {
 		if (process.platform === "win32" && !isPrimaryTrayClick(event)) {
+			return;
+		}
+
+		// While recording the icon is a record button: clicking it finishes the
+		// recording, like the HUD stop button.
+		if (stopRecordingFromTray()) {
 			return;
 		}
 
@@ -730,9 +752,7 @@ function updateTrayMenu(recording: boolean = false) {
 				{
 					label: "Stop Recording",
 					click: () => {
-						if (mainWindow && !mainWindow.isDestroyed()) {
-							mainWindow.webContents.send("stop-recording-from-tray");
-						}
+						stopRecordingFromTray();
 					},
 				},
 			]
