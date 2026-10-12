@@ -94,7 +94,7 @@ function LaunchWindowContent() {
 		setSelectedDeviceId: setSelectedVideoDeviceId,
 	} = useVideoDevices(webcamEnabled || openId === "webcam");
 
-	const { hudOverlayMousePassthroughSupported, platform } =
+	const { hudOverlayMousePassthroughSupported, hudOverlayNativeDragRequired, platform } =
 		useLaunchWindowSystemState(preparePermissions);
 
 	useEffect(() => {
@@ -154,6 +154,9 @@ function LaunchWindowContent() {
 		hudContentRef,
 		hudBarRef,
 		recordingWebcamPreviewContainerRef,
+		// A fixed-size fallback HUD window has no room to translate the bar in,
+		// so move the window itself via the main process.
+		moveHudWindow: hudOverlayMousePassthroughSupported === false,
 	});
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
@@ -412,8 +415,7 @@ function LaunchWindowContent() {
 	);
 
 	const hudMode = finalizing ? "finalizing" : recording ? "recording" : "idle";
-	const useNativeHudBarDrag =
-		platform === "linux" || hudOverlayMousePassthroughSupported === false;
+	const useNativeHudBarDrag = hudOverlayNativeDragRequired;
 	const shouldAnimateHudLayout = !recording && !showRecordingWebcamPreview && !isHudDragging;
 
 	return (
@@ -444,9 +446,8 @@ function LaunchWindowContent() {
 								onMouseLeave={handleHudMouseLeave}
 							>
 								<div
-									// Linux compositors and non-passthrough Windows fallback windows
-									// need native window dragging; the JS drag path only translates
-									// content inside the HUD window.
+									// Wayland compositors need native window dragging; elsewhere
+									// the JS drag path translates the bar or moves the HUD window.
 									className={`flex items-center px-0.5 cursor-grab active:cursor-grabbing ${
 										useNativeHudBarDrag ? styles.electronDrag : ""
 									}`}
