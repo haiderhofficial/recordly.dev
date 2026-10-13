@@ -64,6 +64,7 @@ import {
 } from "../recording/ffmpeg";
 import {
 	attachNativeCaptureLifecycle,
+	discardNativeMacCaptureOutput,
 	finalizeStoredVideo,
 	muxNativeMacRecordingWithAudio,
 	recoverNativeMacCaptureOutput,
@@ -1302,6 +1303,18 @@ export function registerRecordingHandlers(
 			success: false,
 			message: "No recoverable native macOS recording output was found.",
 		};
+	});
+
+	ipcMain.handle("discard-native-screen-recording", async () => {
+		if (process.platform !== "darwin") {
+			return { success: false };
+		}
+
+		try {
+			return { success: await discardNativeMacCaptureOutput() };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
 	});
 
 	ipcMain.handle("confirm-keep-interrupted-recording", async () => {

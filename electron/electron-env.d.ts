@@ -274,6 +274,7 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		discardNativeScreenRecording: () => Promise<{ success: boolean; error?: string }>;
 		confirmKeepInterruptedRecording: () => Promise<boolean>;
 		getLastNativeCaptureDiagnostics: () => Promise<{
 			success: boolean;

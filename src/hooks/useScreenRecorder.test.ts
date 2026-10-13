@@ -247,16 +247,44 @@ describe("resolveWindowUnavailableInterruption", () => {
 		expect(recoverRecording).toHaveBeenCalledTimes(1);
 	});
 
-	it("does not recover when the user discards", async () => {
+	it("deletes the footage instead of recovering when the user discards", async () => {
 		const recoverRecording = vi.fn();
+		const discardRecording = vi.fn().mockResolvedValue(true);
 
 		await expect(
 			resolveWindowUnavailableInterruption({
 				confirmKeepRecording: vi.fn().mockResolvedValue(false),
 				recoverRecording,
+				discardRecording,
 			}),
 		).resolves.toBe("discarded");
 		expect(recoverRecording).not.toHaveBeenCalled();
+		expect(discardRecording).toHaveBeenCalledTimes(1);
+	});
+
+	it("still reports a discard when deleting the footage fails", async () => {
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		await expect(
+			resolveWindowUnavailableInterruption({
+				confirmKeepRecording: vi.fn().mockResolvedValue(false),
+				recoverRecording: vi.fn(),
+				discardRecording: vi.fn().mockRejectedValue(new Error("EPERM")),
+			}),
+		).resolves.toBe("discarded");
+
+		consoleError.mockRestore();
+	});
+
+	it("does not delete the footage when the user keeps it", async () => {
+		const discardRecording = vi.fn();
+
+		await resolveWindowUnavailableInterruption({
+			confirmKeepRecording: vi.fn().mockResolvedValue(true),
+			recoverRecording: vi.fn().mockResolvedValue(null),
+			discardRecording,
+		});
+		expect(discardRecording).not.toHaveBeenCalled();
 	});
 
 	it("reports a failed recovery when nothing could be recovered", async () => {

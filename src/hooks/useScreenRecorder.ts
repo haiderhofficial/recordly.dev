@@ -324,9 +324,11 @@ export type WindowUnavailableOutcome = "recovered" | "discarded" | "recovery-fai
 export async function resolveWindowUnavailableInterruption({
 	confirmKeepRecording,
 	recoverRecording,
+	discardRecording,
 }: {
 	confirmKeepRecording?: () => Promise<boolean>;
 	recoverRecording: () => Promise<string | null>;
+	discardRecording?: () => Promise<unknown>;
 }): Promise<WindowUnavailableOutcome> {
 	let keepRecording = true;
 	if (confirmKeepRecording) {
@@ -338,6 +340,11 @@ export async function resolveWindowUnavailableInterruption({
 	}
 
 	if (!keepRecording) {
+		try {
+			await discardRecording?.();
+		} catch (error) {
+			console.error("Failed to delete the discarded recording:", error);
+		}
 		return "discarded";
 	}
 
@@ -1630,6 +1637,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 									? window.electronAPI.confirmKeepInterruptedRecording
 									: undefined,
 							recoverRecording: () => recoverNativeRecordingSession(),
+							discardRecording: () =>
+								window.electronAPI.discardNativeScreenRecording(),
 						});
 						if (outcome === "recovered") {
 							return;
