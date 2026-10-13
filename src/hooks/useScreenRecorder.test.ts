@@ -5,6 +5,7 @@ import {
 	createProcessedMicrophoneConstraints,
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
+	resolveWindowUnavailableInterruption,
 	shouldUseNativeWindowsCaptureForSource,
 	stopAndDiscardNativeCapture,
 } from "./useScreenRecorder";
@@ -230,6 +231,78 @@ describe("stopAndDiscardNativeCapture", () => {
 			path: "C:\\Recordly\\warm-start.mp4",
 			error: deleteError,
 		});
+	});
+});
+
+describe("resolveWindowUnavailableInterruption", () => {
+	it("recovers the recording when the user keeps it", async () => {
+		const recoverRecording = vi.fn().mockResolvedValue("/Recordly/recording-1.mp4");
+
+		await expect(
+			resolveWindowUnavailableInterruption({
+				confirmKeepRecording: vi.fn().mockResolvedValue(true),
+				recoverRecording,
+			}),
+		).resolves.toBe("recovered");
+		expect(recoverRecording).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not recover when the user discards", async () => {
+		const recoverRecording = vi.fn();
+
+		await expect(
+			resolveWindowUnavailableInterruption({
+				confirmKeepRecording: vi.fn().mockResolvedValue(false),
+				recoverRecording,
+			}),
+		).resolves.toBe("discarded");
+		expect(recoverRecording).not.toHaveBeenCalled();
+	});
+
+	it("reports a failed recovery when nothing could be recovered", async () => {
+		await expect(
+			resolveWindowUnavailableInterruption({
+				confirmKeepRecording: vi.fn().mockResolvedValue(true),
+				recoverRecording: vi.fn().mockResolvedValue(null),
+			}),
+		).resolves.toBe("recovery-failed");
+	});
+
+	it("reports a failed recovery when recovery throws", async () => {
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		await expect(
+			resolveWindowUnavailableInterruption({
+				confirmKeepRecording: vi.fn().mockResolvedValue(true),
+				recoverRecording: vi.fn().mockRejectedValue(new Error("mux failed")),
+			}),
+		).resolves.toBe("recovery-failed");
+
+		consoleError.mockRestore();
+	});
+
+	it("keeps the recording when the confirm dialog is unavailable", async () => {
+		const recoverRecording = vi.fn().mockResolvedValue("/Recordly/recording-1.mp4");
+
+		await expect(resolveWindowUnavailableInterruption({ recoverRecording })).resolves.toBe(
+			"recovered",
+		);
+		expect(recoverRecording).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps the recording when the confirm dialog fails", async () => {
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const recoverRecording = vi.fn().mockResolvedValue("/Recordly/recording-1.mp4");
+
+		await expect(
+			resolveWindowUnavailableInterruption({
+				confirmKeepRecording: vi.fn().mockRejectedValue(new Error("no dialog")),
+				recoverRecording,
+			}),
+		).resolves.toBe("recovered");
+		expect(recoverRecording).toHaveBeenCalledTimes(1);
+
+		consoleError.mockRestore();
 	});
 });
 
