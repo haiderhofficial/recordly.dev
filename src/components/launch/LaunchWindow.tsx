@@ -149,6 +149,10 @@ function LaunchWindowContent() {
 		};
 	}, []);
 
+	useEffect(() => {
+		window.electronAPI?.hudOverlaySetFinalizing?.(finalizing);
+	}, [finalizing]);
+
 	const {
 		recordingHudOffset,
 		isHudDragging,

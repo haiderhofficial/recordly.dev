@@ -2,6 +2,7 @@ import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
+import { waitForFirstVideoFrame } from "@/lib/waitForFirstVideoFrame";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -276,6 +277,25 @@ export type DiscardNativeCaptureResult = {
 	error?: unknown;
 };
 
+/**
+ * The captured source can end without the HUD being asked to stop: the
+ * portal's own "stop sharing" control, a closed window or an unplugged
+ * display. track.stop() does not fire "ended", so our own stops never land here.
+ */
+export function stopWhenCaptureSourceEnds(
+	track: Pick<MediaStreamTrack, "addEventListener">,
+	isRecorderLive: () => boolean,
+	stop: () => void,
+) {
+	track.addEventListener(
+		"ended",
+		() => {
+			if (isRecorderLive()) stop();
+		},
+		{ once: true },
+	);
+}
+
 export async function stopAndDiscardNativeCapture({
 	stopNativeScreenRecording,
 	deleteRecordingFile,
@@ -394,6 +414,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const webcamStream = useRef<MediaStream | null>(null);
 	const mixingContext = useRef<AudioContext | null>(null);
 	const chunks = useRef<Blob[]>([]);
+	const browserRecordingDiscarded = useRef(false);
+	const browserStopRequested = useRef(false);
 	const webcamChunks = useRef<Blob[]>([]);
 	const startTime = useRef<number>(0);
 	const webcamStartTime = useRef<number | null>(null);
@@ -1474,6 +1496,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			} catch (error) {
 				console.warn("Failed to flush recorder before stopping:", error);
 			}
+			browserStopRequested.current = true;
 			recorder.stop();
 			setRecording(false);
 			setFinalizing(true);
@@ -1651,6 +1674,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const recorder = mediaRecorder.current;
 			const recorderState = recorder?.state;
 			if (recorder && (recorderState === "recording" || recorderState === "paused")) {
+				browserStopRequested.current = true;
 				recorder.stop();
 			}
 
@@ -2122,11 +2146,33 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				);
 			}
 
+			// The Linux portal resolves getDisplayMedia() while its picker is still
+			// open, so hold the recorder and its clock until frames actually flow.
+			const firstFrame = useLinuxPortal
+				? await waitForFirstVideoFrame(videoTrack).catch((error) => {
+						if (startWasCancelled()) {
+							return null;
+						}
+						throw error;
+					})
+				: null;
+			// The picker can stay open for a long time; a stop requested meanwhile
+			// must not turn into a recording once frames arrive.
+			if (startWasCancelled()) {
+				cleanupCapturedMedia();
+				await stopWebcamRecorder();
+				return;
+			}
+
 			let {
 				width = DEFAULT_WIDTH,
 				height = DEFAULT_HEIGHT,
 				frameRate = TARGET_FRAME_RATE,
 			} = videoTrack.getSettings();
+			if (firstFrame) {
+				// Before the first frame the track reports the requested size.
+				({ width, height } = firstFrame);
+			}
 
 			width = Math.floor(width / CODEC_ALIGNMENT) * CODEC_ALIGNMENT;
 			height = Math.floor(height / CODEC_ALIGNMENT) * CODEC_ALIGNMENT;
@@ -2135,7 +2181,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const mimeType = selectMimeType();
 
 			console.log(
-				`Recording at ${width}x${height} @ ${frameRate ?? TARGET_FRAME_RATE}fps using ${mimeType ?? "browser default"} / ${Math.round(
+				`Recording at ${width}x${height} @ ${firstFrame ? "up to " : ""}${frameRate ?? TARGET_FRAME_RATE}fps using ${mimeType ?? "browser default"} / ${Math.round(
 					videoBitsPerSecond / BITS_PER_MEGABIT,
 				)} Mbps`,
 			);
@@ -2157,13 +2203,39 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			);
 
 			mediaRecorder.current = recorder;
+			browserRecordingDiscarded.current = false;
+			browserStopRequested.current = false;
 			recorder.ondataavailable = (event) => {
 				if (event.data && event.data.size > 0) chunks.current.push(event.data);
 			};
 			recorder.onstop = async () => {
+				if (!browserStopRequested.current) {
+					// Once every recorded track has ended the recorder stops by itself,
+					// possibly before the "ended" handler below gets to ask for it.
+					browserStopRequested.current = true;
+					pendingWebcamPathPromise.current = stopWebcamRecorder();
+					setPaused(false);
+					markRecordingResumed(Date.now());
+					setRecording(false);
+					setFinalizing(true);
+					void window.electronAPI?.setRecordingState(false);
+				}
 				cleanupCapturedMedia();
+				const wasDiscarded = browserRecordingDiscarded.current;
+				browserRecordingDiscarded.current = false;
+				if (wasDiscarded) {
+					// stop() still flushes a last fragment after the chunks were
+					// cleared; on its own it is not a playable file.
+					chunks.current = [];
+					setFinalizing(false);
+					return;
+				}
 				if (chunks.current.length === 0) {
 					setFinalizing(false);
+					console.warn("Recording stopped without any captured data.");
+					await notifyRecordingFinalizationFailure(
+						"Nothing was recorded because no screen frames were captured.",
+					);
 					return;
 				}
 
@@ -2241,6 +2313,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			recorder.onerror = () => {
 				setRecording(false);
 			};
+			// Finish the recording and open the editor, as the HUD stop button does.
+			stopWhenCaptureSourceEnds(
+				videoTrack,
+				() => mediaRecorder.current === recorder && recorder.state !== "inactive",
+				() => stopRecording.current(),
+			);
 			const mainStartedAt = Date.now();
 			beginWebcamCapture();
 			resetRecordingClock(mainStartedAt);
@@ -2406,6 +2484,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		if (mediaRecorder.current) {
 			chunks.current = [];
+			browserRecordingDiscarded.current = true;
+			browserStopRequested.current = true;
 			cleanupCapturedMedia();
 			if (mediaRecorder.current.state !== "inactive") {
 				mediaRecorder.current.stop();

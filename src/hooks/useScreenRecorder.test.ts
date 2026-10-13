@@ -7,6 +7,7 @@ import {
 	resolveBrowserCaptureCursorPolicy,
 	shouldUseNativeWindowsCaptureForSource,
 	stopAndDiscardNativeCapture,
+	stopWhenCaptureSourceEnds,
 } from "./useScreenRecorder";
 
 type RecordingState = "inactive" | "recording" | "paused";
@@ -171,6 +172,35 @@ describe("shouldUseNativeWindowsCaptureForSource", () => {
 
 	it("keeps browser capture for non-desktop sources", () => {
 		expect(shouldUseNativeWindowsCaptureForSource({ id: "browser-tab:abc" })).toBe(false);
+	});
+});
+
+describe("stopWhenCaptureSourceEnds", () => {
+	it("stops a live recording when the captured source ends", () => {
+		const track = new EventTarget();
+		const stop = vi.fn();
+		stopWhenCaptureSourceEnds(track, () => true, stop);
+
+		track.dispatchEvent(new Event("ended"));
+
+		expect(stop).toHaveBeenCalledTimes(1);
+	});
+
+	it("leaves a recording that already stopped alone", () => {
+		const track = new EventTarget();
+		const stop = vi.fn();
+		stopWhenCaptureSourceEnds(track, () => false, stop);
+
+		track.dispatchEvent(new Event("ended"));
+
+		expect(stop).not.toHaveBeenCalled();
+	});
+
+	it("does not stop before the source ends", () => {
+		const stop = vi.fn();
+		stopWhenCaptureSourceEnds(new EventTarget(), () => true, stop);
+
+		expect(stop).not.toHaveBeenCalled();
 	});
 });
 

@@ -39,6 +39,7 @@ let hudOverlayIgnoringMouse = true;
 let hudOverlaySourceSelectionActive = false;
 let hudOverlayMouseReassertTimer: NodeJS.Timeout | null = null;
 let hudOverlayRecordingActive = false;
+let hudOverlayFinalizing = false;
 let hudCaptureStarting = false;
 let hudOverlayWebcamPreviewVisible = false;
 let countdownWindow: BrowserWindow | null = null;
@@ -450,6 +451,10 @@ ipcMain.on("hud-overlay-set-webcam-preview-visible", (_event, visible: boolean) 
 	}
 });
 
+ipcMain.on("hud-overlay-set-finalizing", (_event, finalizing: boolean) => {
+	hudOverlayFinalizing = Boolean(finalizing);
+});
+
 ipcMain.handle("set-hud-overlay-capture-protection", (_event, enabled: boolean) => {
 	loadHudOverlayCaptureProtectionSetting();
 	hudOverlayHiddenFromCapture = Boolean(enabled);
@@ -668,6 +673,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 			recordingPreparationActive = false;
 			hudCaptureStarting = false;
 			hudOverlayRecordingActive = false;
+			hudOverlayFinalizing = false;
 		}
 	});
 
@@ -731,6 +737,15 @@ export function setHudOverlayRecordingActive(recording: boolean): void {
 	// make the visible HUD controls interactive when the pointer reaches them,
 	// while transparent parts never block the recorded application.
 	setHudOverlayMousePassthrough(true);
+}
+
+export function isHudOverlayRecordingActive(): boolean {
+	return hudOverlayRecordingActive;
+}
+
+/** True from the capture request until the recording is saved or dropped. */
+export function isHudOverlayCaptureInProgress(): boolean {
+	return hudCaptureStarting || hudOverlayRecordingActive || hudOverlayFinalizing;
 }
 
 export function createUpdateToastWindow(): BrowserWindow {
