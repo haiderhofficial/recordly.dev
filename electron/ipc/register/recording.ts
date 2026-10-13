@@ -1304,6 +1304,19 @@ export function registerRecordingHandlers(
 		};
 	});
 
+	ipcMain.handle("confirm-keep-interrupted-recording", async () => {
+		const { response } = await dialog.showMessageBox({
+			type: "question",
+			title: "Recording window closed",
+			message: "The window you were recording is no longer available.",
+			detail: "Keep what you recorded so far and open it in the editor, or discard it?",
+			buttons: ["Keep Recording", "Discard"],
+			defaultId: 0,
+			cancelId: 0,
+		});
+		return response === 0;
+	});
+
 	ipcMain.handle("pause-native-screen-recording", async () => {
 		if (process.platform === "win32") {
 			if (!windowsNativeCaptureActive || !windowsCaptureProcess) {

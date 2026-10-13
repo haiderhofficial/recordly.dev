@@ -560,6 +560,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	recoverNativeScreenRecording: () => {
 		return ipcRenderer.invoke("recover-native-screen-recording");
 	},
+	confirmKeepInterruptedRecording: () => {
+		return ipcRenderer.invoke("confirm-keep-interrupted-recording");
+	},
 	getLastNativeCaptureDiagnostics: () => {
 		return ipcRenderer.invoke("get-last-native-capture-diagnostics");
 	},
