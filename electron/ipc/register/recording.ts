@@ -1311,8 +1311,7 @@ export function registerRecordingHandlers(
 		}
 
 		try {
-			await discardNativeMacCaptureOutput();
-			return { success: true };
+			return { success: await discardNativeMacCaptureOutput() };
 		} catch (error) {
 			return { success: false, error: String(error) };
 		}
