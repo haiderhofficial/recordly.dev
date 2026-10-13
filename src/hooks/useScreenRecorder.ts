@@ -319,7 +319,11 @@ export async function stopAndDiscardNativeCapture({
 	}
 }
 
-export type WindowUnavailableOutcome = "recovered" | "discarded" | "recovery-failed";
+export type WindowUnavailableOutcome =
+	| "recovered"
+	| "discarded"
+	| "discard-failed"
+	| "recovery-failed";
 
 export async function resolveWindowUnavailableInterruption({
 	confirmKeepRecording,
@@ -328,7 +332,7 @@ export async function resolveWindowUnavailableInterruption({
 }: {
 	confirmKeepRecording?: () => Promise<boolean>;
 	recoverRecording: () => Promise<string | null>;
-	discardRecording?: () => Promise<unknown>;
+	discardRecording?: () => Promise<boolean>;
 }): Promise<WindowUnavailableOutcome> {
 	let keepRecording = true;
 	if (confirmKeepRecording) {
@@ -341,11 +345,12 @@ export async function resolveWindowUnavailableInterruption({
 
 	if (!keepRecording) {
 		try {
-			await discardRecording?.();
+			const deleted = (await discardRecording?.()) ?? true;
+			return deleted ? "discarded" : "discard-failed";
 		} catch (error) {
 			console.error("Failed to delete the discarded recording:", error);
+			return "discard-failed";
 		}
-		return "discarded";
 	}
 
 	try {
@@ -1637,13 +1642,18 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 									? window.electronAPI.confirmKeepInterruptedRecording
 									: undefined,
 							recoverRecording: () => recoverNativeRecordingSession(),
-							discardRecording: () =>
-								window.electronAPI.discardNativeScreenRecording(),
+							discardRecording: async () =>
+								(await window.electronAPI.discardNativeScreenRecording()).success,
 						});
 						if (outcome === "recovered") {
 							return;
 						}
-						if (outcome === "discarded") {
+						if (outcome === "discard-failed") {
+							toast.error(
+								"Couldn't delete the discarded recording. It may still be in your recordings folder.",
+							);
+						}
+						if (outcome === "discarded" || outcome === "discard-failed") {
 							await window.electronAPI.openSourceSelector();
 							return;
 						}

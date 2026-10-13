@@ -3,12 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	lastNativeCaptureDiagnostics,
 	setLastNativeCaptureDiagnostics,
 	setNativeCaptureMicrophonePath,
 	setNativeCaptureSystemAudioPath,
 	setNativeCaptureTargetPath,
 } from "../state";
-import { discardNativeMacCaptureOutput } from "./mac";
+import { discardNativeMacCaptureOutput, recoverNativeMacCaptureOutput } from "./mac";
 
 vi.mock("electron", () => ({
 	app: {
@@ -63,6 +64,22 @@ describe("discardNativeMacCaptureOutput", () => {
 		for (const filePath of [videoPath, systemAudioPath, microphonePath, telemetryPath]) {
 			expect(await exists(filePath)).toBe(false);
 		}
+	});
+
+	it("forgets the discarded capture so it cannot be recovered afterwards", async () => {
+		const videoPath = path.join(root, "recording-1.mp4");
+		await fs.writeFile(videoPath, "data");
+		setLastNativeCaptureDiagnostics({
+			backend: "mac-screencapturekit",
+			phase: "start",
+			timestamp: new Date().toISOString(),
+			outputPath: videoPath,
+		});
+
+		await expect(discardNativeMacCaptureOutput()).resolves.toBe(true);
+
+		expect(lastNativeCaptureDiagnostics).toBeNull();
+		await expect(recoverNativeMacCaptureOutput()).resolves.toBeNull();
 	});
 
 	it("prefers the active capture paths over older diagnostics", async () => {

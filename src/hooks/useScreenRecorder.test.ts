@@ -262,7 +262,17 @@ describe("resolveWindowUnavailableInterruption", () => {
 		expect(discardRecording).toHaveBeenCalledTimes(1);
 	});
 
-	it("still reports a discard when deleting the footage fails", async () => {
+	it("reports a failed discard when the footage could not be deleted", async () => {
+		await expect(
+			resolveWindowUnavailableInterruption({
+				confirmKeepRecording: vi.fn().mockResolvedValue(false),
+				recoverRecording: vi.fn(),
+				discardRecording: vi.fn().mockResolvedValue(false),
+			}),
+		).resolves.toBe("discard-failed");
+	});
+
+	it("reports a failed discard when deleting the footage throws", async () => {
 		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
 		await expect(
@@ -271,7 +281,7 @@ describe("resolveWindowUnavailableInterruption", () => {
 				recoverRecording: vi.fn(),
 				discardRecording: vi.fn().mockRejectedValue(new Error("EPERM")),
 			}),
-		).resolves.toBe("discarded");
+		).resolves.toBe("discard-failed");
 
 		consoleError.mockRestore();
 	});

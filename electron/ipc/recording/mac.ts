@@ -16,6 +16,7 @@ import {
 	selectedSource,
 	setCurrentProjectPath,
 	setCurrentVideoPath,
+	setLastNativeCaptureDiagnostics,
 	setNativeCaptureMicrophonePath,
 	setNativeCaptureProcess,
 	setNativeCaptureStopRequested,
@@ -327,6 +328,7 @@ export async function discardNativeMacCaptureOutput() {
 			.filter((filePath): filePath is string => Boolean(filePath))
 			.map((filePath) => fs.rm(filePath, { force: true })),
 	);
+	setLastNativeCaptureDiagnostics(null);
 	return true;
 }
 
